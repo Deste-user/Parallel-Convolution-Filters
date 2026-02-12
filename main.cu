@@ -1,20 +1,24 @@
+#include <fstream>
 #include <cuda_runtime.h>
 #include <iostream>
+#include <filesystem>
 #include <opencv2/opencv.hpp>
 #include <vector>
+#include <cmath>
 #define NUM 10000
 #define BLOCK_W 16
 #define BLOCK_H 16
 #define RADIUS 1 // The radius of a filter 3x3 is one.
 #define SMEM_W (BLOCK_W + 2*RADIUS)
 #define SMEM_H (BLOCK_H + 2*RADIUS)
+#define MAX_FILTER 900
 
 
 #define IMAGE_TEMPLATE_PATH "/home/deste00/Convolution_Filter/img_template.jpeg"
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 // 108 byte allocated on the constant memory
 // The constant memory has a size of 64 Kb so is ok to load this vectors.
-__constant__ float d_filter [9];
+__constant__ float d_filter [MAX_FILTER];
 
 
 // we use # to trasform the code in text. In this case the statement code is trasformed in success or not.
@@ -43,9 +47,13 @@ static void CheckCUDAErrorAux(const char* file,unsigned line ,const char* statem
 }
 
 
-SoA elaborate_img_load_soa(const std::string path_img, int* rows, int* cols, const int resize_factor){
+SoA elaborate_img_load_soa(const std::string path_img, int* rows, int* cols, const int resize_factor,bool visualization=false){
     cv::Mat image = cv::imread(path_img);
     cv::resize(image, image,cv::Size(), resize_factor, resize_factor, cv::INTER_CUBIC);
+
+    if (visualization){
+        cv::imshow("Original Image", image);
+    }
     
     *rows= image.rows;
     *cols= image.cols;
@@ -352,19 +360,15 @@ __global__ void tiling_convolution_SoA_dynamic(uchar* array_R, uchar* array_G, u
 
 
 
-std::vector<float> tiling_performance(int factor_size, int l,int dimention_block=16, bool tile=false, bool visualization = false){
+std::vector<float> measure_performance(int factor_size, int l,int dimention_block=16, bool tile=false, bool visualization = false){
     int ROWS;
     int COLS;
     int radius= l/2;
     
-
-    if (visualization){
-        cv::imshow("Original Image", cv::imread(IMAGE_TEMPLATE_PATH));
-    }
     std::vector<float> time;
 
         // Load the images with the correct resize factor
-    SoA soa_struct = elaborate_img_load_soa(IMAGE_TEMPLATE_PATH, &ROWS, &COLS, factor_size);
+    SoA soa_struct = elaborate_img_load_soa(IMAGE_TEMPLATE_PATH, &ROWS, &COLS, factor_size,visualization);
     AoS* aos_struct = elaborate_img_load_aos(IMAGE_TEMPLATE_PATH, &ROWS, &COLS, factor_size);
 
     int N = ROWS *COLS;  
@@ -412,33 +416,38 @@ std::vector<float> tiling_performance(int factor_size, int l,int dimention_block
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     float milliseconds= 0.0f;
+    int ITERATIONS = 100;
 
     cudaEventRecord(start);
-    if (tile){
-        tiling_convolution_AoS_dynamic<<<gridDim, blockDim, num_bytes>>>(d_input_aos, d_output_aos,COLS, ROWS,l);
-    }else{
-        convolution_AoS <<<gridDim, blockDim>>>(d_input_aos, d_output_aos,COLS, ROWS, l);
+    for (int i=0; i<ITERATIONS; i++){
+        if (tile){
+            tiling_convolution_AoS_dynamic<<<gridDim, blockDim, num_bytes>>>(d_input_aos, d_output_aos,COLS, ROWS,l);
+        }else{
+            convolution_AoS <<<gridDim, blockDim>>>(d_input_aos, d_output_aos,COLS, ROWS, l);
+        }
     }
     cudaEventRecord(stop);
 
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&milliseconds, start, stop);
-    time.push_back(milliseconds);
+    time.push_back(milliseconds / ITERATIONS);
+    
 
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     milliseconds=0.0f;
     cudaEventRecord(start);
-    if (tile){
-        tiling_convolution_SoA_dynamic<<<gridDim, blockDim,num_bytes>>>(d_soa_wrapper.R, d_soa_wrapper.G, d_soa_wrapper.B, d_soa_output, ROWS, COLS, l);
-    }else{
-        convolution_SoA<<<gridDim, blockDim>>>(d_soa_wrapper.R, d_soa_wrapper.G, d_soa_wrapper.B, d_soa_output, ROWS, COLS, l);
+    for(int i=0; i<ITERATIONS; i++){
+        if (tile){
+            tiling_convolution_SoA_dynamic<<<gridDim, blockDim,num_bytes>>>(d_soa_wrapper.R, d_soa_wrapper.G, d_soa_wrapper.B, d_soa_output, ROWS, COLS, l);
+        }else{
+            convolution_SoA<<<gridDim, blockDim>>>(d_soa_wrapper.R, d_soa_wrapper.G, d_soa_wrapper.B, d_soa_output, ROWS, COLS, l);
+        }
     }
-
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&milliseconds, start, stop);
-    time.push_back(milliseconds);
+    time.push_back(milliseconds / ITERATIONS);
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
@@ -471,106 +480,246 @@ std::vector<float> tiling_performance(int factor_size, int l,int dimention_block
     return time;
 }
 
-// Function to confront the convolution with AoS Layout - with Tiling and  without Tiling.
-
-struct Results{
-    float time_aos;
-    float time_soa;
-    float time_aos_tile;
-    float time_soa_tile;
-};
-
-// ==================== BENCHMARK FUNCTION ====================
-// Benchmark con diverse dimensioni di immagine per vedere dove il tiling diventa vantaggioso
-void benchmark_with_multiple_sizes() {
-    std::vector<int> resize_factors = {1,2, 3, 4, 5, 10, 20, 30, 40, 50};
-    
-    printf("\n================================================================================\n");
-    printf("BENCHMARK - TILING vs NON-TILING per diverse dimensioni di immagine\n");
-    printf("================================================================================\n");
-    printf("%-15s %-20s %-20s %-15s %-15s\n", "Resize Factor", "Non-Tiling (ms)", "Tiling (ms)", "Speedup", "Total_Pixels");
-    printf("--------------------------------------------------------------------------------\n");
-    
-    for (int factor : resize_factors) {
-        float sum_time_tiling = 0.0f;
-        float sum_time_notiling = 0.0f;
-        for (int i = 0; i <10; i++){
-        std::vector<float> time_notiling = tiling_performance(factor, 3, 16, false, false);
-        float time_aos_notiling = time_notiling[0];
-        sum_time_notiling += time_aos_notiling;
-        
-        std::vector<float> time_tiling = tiling_performance(factor, 3, 16, true, false);
-        float time_aos_tiling = time_tiling[0];
-        sum_time_tiling += time_aos_tiling;
+__global__ void dummy_warmup_kernel(float* data, int N) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < N) {
+        // Fai un po' di matematica inutile per alzare i clock
+        float val = 0.0f;
+        for (int i = 0; i < 100; i++) {
+            val += sinf(idx * i) * cosf(idx);
         }
-        float avg_time_notiling = sum_time_notiling / 10.0f;
-        float avg_time_tiling = sum_time_tiling / 10.0f;
-        // Calcolo metriche
-        int ROWS, COLS;
-        SoA test_soa = elaborate_img_load_soa(IMAGE_TEMPLATE_PATH, &ROWS, &COLS, factor);
-        int total_pixels = ROWS * COLS;
-        //float bytes_read = total_pixels * 3 * 2; // 3 canali, 2 accessi (input + kernel read)
-        //float bandwidth_notiling = (bytes_read / 1e9) / (time_aos_notiling / 1000.0f);
-        
-        printf("%-15d", factor);
-        printf("%-20.6f", avg_time_notiling);
-        printf("%-20.6f", avg_time_tiling);
-        
-        float speedup = avg_time_notiling / avg_time_tiling;
-        printf("x%-15.2f", speedup);
-        printf("%-15d\n", total_pixels);
-        //printf("%-15.2f\n", bandwidth_notiling);
-        // Pulizia
-        delete[] test_soa.R;
-        delete[] test_soa.G;
-        delete[] test_soa.B;
+        data[idx] = val; // Scrittura in memoria (sveglia il controller memoria)
     }
+}
+
+void warmup_gpu() {
+    cudaFree(0); 
+
+    int size = 1024 * 1024; 
+    float* d_dummy;
+ 
+    cudaMalloc(&d_dummy, size * sizeof(float));
+    
+    // Lancia il kernel un po' di volte per essere sicuri
+    for(int i=0; i<5; i++) {
+        dummy_warmup_kernel<<<256, 256>>>(d_dummy, size);
+    }
+    cudaDeviceSynchronize();
+
+    cudaFree(d_dummy);
+
 }
 
 
 
+/* Function that create a Gaussian filter */
+std::vector<float> create_gaussian_filter (int size, float sigma=-1.0f){
+    std::vector<float> filter (size*size);
+    int radius = size/2;
+    float sum =0.0f;
 
-//TODO save function in csv to plot the results in a graph.
-void save_results(){}
-
-
-//TODO function to 
-
-
-
-int main(int argc, char** argv){
-    
-    std::string type_filter= "sharp";
-    float h_filter [9];
-
-    if (argc != 1){
-    type_filter = argv[1];
+    if (sigma < 0.0f){
+        sigma = radius/2;
     }
-    if (type_filter == "blur") {
-        float tmp[9] = {
-            1.0f/9, 1.0f/9, 1.0f/9,
-            1.0f/9, 1.0f/9, 1.0f/9,
-            1.0f/9, 1.0f/9, 1.0f/9
-        };
-        std::copy(tmp, tmp+9, h_filter);
 
-    } else if (type_filter == "gauss") {
-        float tmp[9] = {
-            1.0f/16, 2.0f/16, 1.0f/16,
-            2.0f/16, 4.0f/16, 2.0f/16,
-            1.0f/16, 2.0f/16, 1.0f/16
-        };
-        std::copy(tmp, tmp+9, h_filter);
+    float two_sigma_squared = 2* sigma *sigma;
+
+    for (int ny=-radius; ny <= radius; ny++){
+        for (int nx=-radius; nx <= radius; nx++){
+            int idx = (radius + ny)* size + (radius + nx);
+            float dist_sq =(float) (nx*nx + ny*ny);
+            float value = expf(-dist_sq / two_sigma_squared);
+            filter[idx] = value;
+            sum += value;
+        }
+    }
+
+    // Normalization
+    for (int i =0; i< size*size; i++){
+        filter[i] /= sum;
+    }
+
+    return filter;
+}
+
+// Filter that detect the edges of the image.
+std::vector<float> create_edge_detection_filter(int size) {
+
+    std::vector<float> filter(size * size, 0.0f);
+    int center = size / 2;
+    
+
+    int idx_center = center * size + center;
+    
+    filter[idx_center - 1] = -1.0f;    
+    filter[idx_center + 1] = -1.0f;    
+    filter[idx_center - size] = -1.0f; 
+    filter[idx_center + size] = -1.0f; 
+    filter[idx_center] = 4.0f;         
+    
+    return filter;
+}
+
+// Filter that makes the average of pixel in the neighborhood.
+std::vector<float> create_box_filter(int size) {
+    std::vector<float> filter(size * size);
+    float value = 1.0f / (float)(size * size); 
+    
+    for(int i=0; i < size*size; i++) {
+        filter[i] = value;
+    }
+    return filter;
+}
+
+void allocate_costant_mem(std::vector<float> filter){
+    int size = filter.size();
+    if (size > MAX_FILTER){
+        std::cout << "Error filter to big!"<< std::endl;
+        return;
+    } 
+    CUDA_CHECK_RETURN(cudaMemcpyToSymbol(d_filter, filter.data(),size*sizeof(float)));
+}
+
+void reset_costant_memory(){
+    // Erase the constant memory for the filter
+    float zero_filter[MAX_FILTER] = {0.0f};
+    CUDA_CHECK_RETURN(cudaMemcpyToSymbol(d_filter, zero_filter, MAX_FILTER*sizeof(float)));
+}
+
+
+void confront_layout(){
+    int size = 3;
+    std::vector<float> filter = create_gaussian_filter(size);
+
+    allocate_costant_mem(filter);
+
+    std::vector<int> factor_resize = {1,2,3,4,5,10,15,20,40};
+    std::vector<float> time_aos;    
+    std::vector<float> time_soa;
+
+    for (auto factor : factor_resize){
+        std::vector<float> time = measure_performance(factor, size);
+        time_aos.push_back(time[0]);
+        time_soa.push_back(time[1]);
+    }
+
+    printf("Factor\tAOS time\tSOA time\n");
+    for (size_t i = 0; i < factor_resize.size(); i++){
+        printf("%d\t%.6f\t%.6f\n", factor_resize[i], time_aos[i], time_soa[i]);
+    }
+
+    reset_costant_memory();
+    
+    // Save in CSV
+    std::ofstream csv_file("./experiments_results/performance_layout.csv");
+    csv_file << "Factor,AOS time,SOA time\n";
+    for (size_t i = 0; i < factor_resize.size(); i++){
+        csv_file << factor_resize[i] << "," << time_aos[i] << "," << time_soa[i] << "\n";
+    }
+    csv_file.close();
+
+}
+
+
+void tiling_test(){
+    std::vector<int> dim_filter = {3, 5, 7, 9, 11, 15, 21, 25};
+    int factor_size = 20;
+    std::vector<float> soa_tiled_time;
+    std::vector<float> soa_notiled_time;
+    printf("Size\tSOA Tiled Time\tSOA Notiled Time\n");
+    for (auto size : dim_filter){
+        std::vector<float> filter = create_gaussian_filter(size);
+        allocate_costant_mem(filter);
+        //AoS and then SoA, we take the second element.
+        std::vector<float> time = measure_performance(factor_size, size,16,true);
+        soa_tiled_time.push_back(time[1]);
+        time = measure_performance(factor_size, size,16,false);
+        soa_notiled_time.push_back(time[1]);
+        reset_costant_memory();
+        printf("%d\t%.6f\t%.6f\n", size, soa_tiled_time.back(), soa_notiled_time.back());
+    }
+
+    // Save in CSV
+    std::ofstream csv_file("./experiments_results/performance_tiling.csv");
+    csv_file << "Size,SOA Tiled Time,SOA Notiled Time\n";
+    for (size_t i = 0; i < dim_filter.size(); i++){
+        csv_file << dim_filter[i] << "," << soa_tiled_time[i] << "," << soa_notiled_time[i] << "\n";
+    }
+    csv_file.close();
+}
+
+void visualize_convolution(int size_filter, int factor_size, std::string type_filter){
+    std::vector<float> filter;
+    if (type_filter == "gaussian") {
+        filter = create_gaussian_filter(size_filter);
+    } else if (type_filter == "edge") {
+        filter = create_edge_detection_filter(size_filter);
+    } else if (type_filter == "box") {
+        filter = create_box_filter(size_filter);
     }else{
-        float tmp[9] = {0,-1,0,-1,5,-1,0,-1,0};
-        std::copy(tmp, tmp+9, h_filter);
-    }    
-   
-    cudaMemcpyToSymbol(d_filter,h_filter, 9*sizeof(float));
-    int size = ARRAY_SIZE(h_filter);
-    int l = sqrt(size);
+        filter = {
+         0.0f, -1.0f,  0.0f,
+        -1.0f,  5.0f, -1.0f,
+         0.0f, -1.0f,  0.0f
+        };
+        size_filter = 3;
+    }
+    allocate_costant_mem(filter);
+    measure_performance(factor_size, size_filter ,16,false, true);
+    reset_costant_memory();
+}
 
-    // Run benchmark with multiple image sizes to see where tiling becomes beneficial
-    benchmark_with_multiple_sizes();
+
+void dimention_block_test(){
+    std::vector<int> dim_block = {2, 4, 8, 16, 32};
+    int factor_size = 20;
+    int size_filter = 11;
+    std::vector<float> soa_tiled_time;
+    printf("Dim Block\tSOA Tiled Time\n");
+    for (auto dim : dim_block){
+        std::vector<float> filter = create_gaussian_filter(size_filter);
+        allocate_costant_mem(filter);
+        std::vector<float> time = measure_performance(factor_size, size_filter, dim,true);
+        soa_tiled_time.push_back(time[1]);
+        reset_costant_memory();
+        printf("%d\t%.6f\n", dim, soa_tiled_time.back());
+    }
+
+    // Save in CSV
+    std::ofstream csv_file("./experiments_results/performance_dim_block.csv");
+    csv_file << "Dim Block,SOA Tiled Time\n";
+    for (size_t i = 0; i < dim_block.size(); i++){
+        csv_file << dim_block[i] << "," << soa_tiled_time[i] << "\n";
+    }
+    csv_file.close();
+}
+
+
+int main(int argc, char* argv[]){
+
+    if (argc > 1 && std::string(argv[1]) == "visualize") {
+        int size_filter = 11;
+        int factor_size = 3;
+
+        std::string type_filter = "";
+        if (argc > 2) {
+            type_filter = argv[2];
+        }
+        visualize_convolution(size_filter, factor_size, type_filter);
+        return 0;
+    }else{
+
+        warmup_gpu();
+
+        //Create dir to save results
+        std::filesystem::create_directory("./experiments_results");
+
+        confront_layout();
+
+        tiling_test();
+
+        dimention_block_test();
+    }    
+     return 0;
 
 }
