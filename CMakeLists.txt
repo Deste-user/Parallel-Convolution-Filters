@@ -14,12 +14,8 @@ target_link_libraries(main_cuda ${OpenCV_LIBS})
 
 
 set(OpenCV_DIR "/usr/lib/x86_64-linux-gnu/cmake/opencv4/OpenCVConfig.cmake")
-
 include_directories(${OpenCV_INCLUDE_DIRS})
 
-add_executable(main_seq_aos Layout_AoS_Convolution.cpp)
-target_link_libraries(main_seq_aos ${OpenCV_LIBS})
-
-add_executable(main_seq_soa Layout_SoA_Convolution.cpp)
-target_include_directories(main_seq_soa PUBLIC ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(main_seq_soa ${OpenCV_LIBS})
+add_executable(benchmark benchmark.cpp)
+target_include_directories(benchmark PUBLIC ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(benchmark ${OpenCV_LIBS})

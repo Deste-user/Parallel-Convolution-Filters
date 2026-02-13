@@ -14,7 +14,7 @@
 #define MAX_FILTER 900
 
 
-#define IMAGE_TEMPLATE_PATH "/home/deste00/Convolution_Filter/img_template.jpeg"
+#define IMAGE_TEMPLATE_PATH "img_template.jpeg"
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 // 108 byte allocated on the constant memory
 // The constant memory has a size of 64 Kb so is ok to load this vectors.
@@ -720,6 +720,6 @@ int main(int argc, char* argv[]){
 
         dimention_block_test();
     }    
-     return 0;
+    return 0;
 
 }
