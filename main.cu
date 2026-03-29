@@ -14,7 +14,7 @@
 #define MAX_FILTER 16000
 
 
-#define IMAGE_TEMPLATE_PATH "img_template.jpeg"
+#define IMAGE_TEMPLATE_PATH "images/img_template.jpeg"
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 // 108 byte allocated on the constant memory
 // The constant memory has a size of 64 Kb so is ok to load this vectors.
@@ -50,7 +50,7 @@ static void CheckCUDAErrorAux(const char* file,unsigned line ,const char* statem
 SoA elaborate_img_load_soa(const std::string path_img, int* rows, int* cols, const int resize_factor,bool visualization=false){
     cv::Mat image = cv::imread(path_img);
     cv::resize(image, image,cv::Size(), resize_factor, resize_factor, cv::INTER_CUBIC);
-    cv::imwrite("input.jpeg", image);
+    cv::imwrite("images/input.jpeg", image);
 
     if (visualization){
         cv::imshow("Original Image", image);
@@ -113,7 +113,7 @@ void display_image(AoS* structure, int rows, int cols){
         }
     }
     cv::imshow("Convolution with AoS Layout", img);
-    cv::imwrite("output_aos.jpeg", img); 
+    cv::imwrite("images/output_aos.jpeg", img); 
     
 }
 
@@ -129,7 +129,7 @@ void display_image(SoA structure, int rows, int cols){
         }
     }
     cv::imshow("Convolution with SoA Layout", img);
-    cv::imwrite("output_soa.jpeg", img);    
+    cv::imwrite("images/output_soa.jpeg", img);    
 }
 
 //------------------------------- NOT TILING KERNELS--------------------------------------------
