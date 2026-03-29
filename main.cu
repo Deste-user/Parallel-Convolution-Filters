@@ -11,7 +11,7 @@
 #define RADIUS 1 // The radius of a filter 3x3 is one.
 #define SMEM_W (BLOCK_W + 2*RADIUS)
 #define SMEM_H (BLOCK_H + 2*RADIUS)
-#define MAX_FILTER 900
+#define MAX_FILTER 16000
 
 
 #define IMAGE_TEMPLATE_PATH "img_template.jpeg"
@@ -50,6 +50,7 @@ static void CheckCUDAErrorAux(const char* file,unsigned line ,const char* statem
 SoA elaborate_img_load_soa(const std::string path_img, int* rows, int* cols, const int resize_factor,bool visualization=false){
     cv::Mat image = cv::imread(path_img);
     cv::resize(image, image,cv::Size(), resize_factor, resize_factor, cv::INTER_CUBIC);
+    cv::imwrite("input.jpeg", image);
 
     if (visualization){
         cv::imshow("Original Image", image);
@@ -63,9 +64,9 @@ SoA elaborate_img_load_soa(const std::string path_img, int* rows, int* cols, con
     soa_struct.G = new uchar[image.rows * image.cols];
     soa_struct.B = new uchar[image.rows * image.cols];
     
-    for (int y = 0; y< image.rows ; y++){
-        for (int x = 0 ; x < image.cols; x++){
-            int idx = y* image.cols + x;
+    for (size_t y = 0; y< image.rows ; y++){
+        for (size_t x = 0 ; x < image.cols; x++){
+            size_t idx = y* image.cols + x;
             //represent a vector of 3 byte
             cv::Vec3b pxl = image.at<cv::Vec3b>(y,x);
             soa_struct.B[idx] = pxl[0];
@@ -86,9 +87,9 @@ AoS* elaborate_img_load_aos(const std::string path_img, int* rows, int* cols, co
 
     AoS* aos_struct = new AoS[image.rows * image.cols];
     
-    for (int y = 0; y< image.rows ; y++){
-        for (int x = 0 ; x < image.cols; x++){
-            int idx = y* image.cols + x;
+    for (size_t y = 0; y< image.rows ; y++){
+        for (size_t x = 0 ; x < image.cols; x++){
+            size_t idx = y* image.cols + x;
             //represent a vector of 3 byte
             cv::Vec3b pxl = image.at<cv::Vec3b>(y,x);
             aos_struct[idx].B = pxl[0];
@@ -112,6 +113,7 @@ void display_image(AoS* structure, int rows, int cols){
         }
     }
     cv::imshow("Convolution with AoS Layout", img);
+    cv::imwrite("output_aos.jpeg", img); 
     
 }
 
@@ -127,7 +129,7 @@ void display_image(SoA structure, int rows, int cols){
         }
     }
     cv::imshow("Convolution with SoA Layout", img);
-    
+    cv::imwrite("output_soa.jpeg", img);    
 }
 
 //------------------------------- NOT TILING KERNELS--------------------------------------------
@@ -154,7 +156,7 @@ __global__ void convolution_SoA(uchar* array_R, uchar* array_G, uchar* array_B, 
             cur_x = max(0, min(cur_x, width - 1));
             cur_y = max(0, min(cur_y, height - 1));
 
-            int true_idx = cur_y *width + cur_x;
+            size_t true_idx = cur_y *width + cur_x;
 
             sum_R += array_R[true_idx]*coeff;
             sum_G += array_G[true_idx]*coeff;
@@ -162,8 +164,8 @@ __global__ void convolution_SoA(uchar* array_R, uchar* array_G, uchar* array_B, 
 
         }
     }
-    int N= height*width;
-    int idx = idx_y*width + idx_x;
+    size_t N= (size_t)height*(size_t)width;
+    size_t idx = (size_t)idx_y*(size_t)width + (size_t)idx_x;
     output[idx] = (uchar)min(max(sum_R, 0.0f), 255.0f);
     output[idx + N] = (uchar)min(max(sum_G, 0.0f), 255.0f);
     output[idx + 2*N] = (uchar)min(max(sum_B, 0.0f), 255.0f);
@@ -195,7 +197,7 @@ __global__ void convolution_AoS(const AoS* input_img, AoS* output,const int widt
             cur_y = max(0, min(cur_y, height - 1));
 
             
-            int neighbor = cur_y* width + cur_x;
+            size_t neighbor = cur_y* width + cur_x;
 
             sum_R += input_img[neighbor].R*coeff;
             sum_G += input_img[neighbor].G*coeff;
@@ -203,7 +205,7 @@ __global__ void convolution_AoS(const AoS* input_img, AoS* output,const int widt
         }
     }
 
-    int idx = idx_y*width + idx_x;
+    size_t idx = (size_t)idx_y * width + idx_x;
     output[idx].R = (uchar)min(max(sum_R, 0.0f), 255.0f);
     output[idx].G = (uchar)min(max(sum_G, 0.0f), 255.0f);
     output[idx].B = (uchar)min(max(sum_B, 0.0f), 255.0f);
@@ -218,11 +220,7 @@ __global__ void tiling_convolution_AoS_dynamic(const AoS* input_img, AoS* output
     int h_tile= (blockDim.y +2*radius); 
     int tile_size= w_tile*h_tile;
 
-    //Flatten RRRRRRR... | GGGGG.... | BBBB....
-    extern __shared__ uchar sh_mem[];
-    uchar* R_pointer=&sh_mem[0];
-    uchar* G_pointer=&sh_mem[tile_size];
-    uchar* B_pointer=&sh_mem[2*tile_size];
+    extern __shared__ AoS sh_mem_AoS[];
 
     //These are the coordinates of the thread in the block.
     int tx= threadIdx.x;
@@ -247,12 +245,10 @@ __global__ void tiling_convolution_AoS_dynamic(const AoS* input_img, AoS* output
 
         g_y = max(0, min(g_y, height - 1));
         g_x = max(0, min(g_x, width - 1));
-        int global_idx = g_y*width + g_x;
+        size_t global_idx = (size_t)g_y * width + g_x;
 
-        R_pointer[i] = input_img[global_idx].R;
-        G_pointer[i] = input_img[global_idx].G;
-        B_pointer[i] = input_img[global_idx].B;
-
+        sh_mem_AoS[i] = input_img[global_idx];
+        
     }
 
     __syncthreads();
@@ -273,13 +269,15 @@ __global__ void tiling_convolution_AoS_dynamic(const AoS* input_img, AoS* output
 
             int sh_idx = (center_y+ny)*w_tile + (center_x+nx);
 
-            sum_R+=R_pointer[sh_idx]*coeff;
-            sum_G+=G_pointer[sh_idx]*coeff;
-            sum_B+=B_pointer[sh_idx]*coeff;
+            AoS pixel  = sh_mem_AoS[sh_idx];
+
+            sum_R+=pixel.R*coeff;
+            sum_G+=pixel.G*coeff;
+            sum_B+=pixel.B*coeff;
         }    
     }
 
-    int idx = out_y*width + out_x;
+    size_t idx = (size_t)out_y * width + out_x;
     output[idx].R = (uchar)min(max(sum_R, 0.0f), 255.0f);
     output[idx].G = (uchar)min(max(sum_G, 0.0f), 255.0f);
     output[idx].B = (uchar)min(max(sum_B, 0.0f), 255.0f);
@@ -292,10 +290,10 @@ __global__ void tiling_convolution_SoA_dynamic(uchar* array_R, uchar* array_G, u
     int tile_size= w_tile*h_tile;
 
     //Flatten RRRRRRR... | GGGGG.... | BBBB....
-    extern __shared__ uchar sh_mem[];
-    uchar* R_pointer=&sh_mem[0];
-    uchar* G_pointer=&sh_mem[tile_size];
-    uchar* B_pointer=&sh_mem[2*tile_size];
+    extern __shared__ uchar sh_mem_SoA[];
+    uchar* R_pointer=&sh_mem_SoA[0];
+    uchar* G_pointer=&sh_mem_SoA[tile_size];
+    uchar* B_pointer=&sh_mem_SoA[2*tile_size];
 
     //These are the coordinates of the thread in the block.
     int tx= threadIdx.x;
@@ -320,7 +318,7 @@ __global__ void tiling_convolution_SoA_dynamic(uchar* array_R, uchar* array_G, u
 
         g_y = max(0, min(g_y, height - 1));
         g_x = max(0, min(g_x, width - 1));
-        int global_idx = g_y*width + g_x;
+        size_t global_idx = (size_t)g_y * width + g_x;
 
         R_pointer[i] = array_R[global_idx];
         G_pointer[i] = array_G[global_idx];
@@ -351,8 +349,8 @@ __global__ void tiling_convolution_SoA_dynamic(uchar* array_R, uchar* array_G, u
             sum_B+=B_pointer[sh_idx]*coeff;
         }    
     }
-    int N=width*height;
-    int idx = out_y*width + out_x;
+    size_t N= (size_t)width*(size_t)height;
+    size_t idx = (size_t)out_y * width + out_x;
     output[idx] = (uchar)min(max(sum_R, 0.0f), 255.0f);
     output[idx + N] = (uchar)min(max(sum_G, 0.0f), 255.0f);
     output[idx + 2*N] = (uchar)min(max(sum_B, 0.0f), 255.0f);
@@ -360,29 +358,30 @@ __global__ void tiling_convolution_SoA_dynamic(uchar* array_R, uchar* array_G, u
 
 
 
-std::vector<float> measure_performance(int factor_size, int l,int dimention_block=16, bool tile=false, bool visualization = false){
+std::vector<float> measure_performance(int factor_size, int l,int dimention_block=16, bool tile=false, bool visualization = false, int iterations = 100){
     int ROWS;
     int COLS;
     int radius= l/2;
     
     std::vector<float> time;
 
-        // Load the images with the correct resize factor
+    // Load the images with the correct resize factor
     SoA soa_struct = elaborate_img_load_soa(IMAGE_TEMPLATE_PATH, &ROWS, &COLS, factor_size,visualization);
     AoS* aos_struct = elaborate_img_load_aos(IMAGE_TEMPLATE_PATH, &ROWS, &COLS, factor_size);
 
-    int N = ROWS *COLS;  
+    size_t N = (size_t)ROWS * (size_t)COLS;
+    //printf("Image loaded with %d rows and %d cols\n", ROWS, COLS);
     AoS* d_output_aos;
     SoA d_soa_wrapper;
     AoS* d_input_aos;
     AoS* h_output_aos= new AoS[N];
     uchar* d_soa_output;
 
-    int size_in_bytes_aos= (N) * sizeof(AoS);
+    size_t size_in_bytes_aos= (N) * sizeof(AoS);
 
     uchar* raw_pointer_storage;
-    int size_in_bytes_soa = N*3* sizeof(uchar);
-    int channel_size = N * sizeof(uchar);
+    size_t size_in_bytes_soa = N*3* sizeof(uchar);
+    size_t channel_size = N * sizeof(uchar);
 
     // In general, the cudaMalloc takes the double pointer and size
     // It takes the address that contains the address of the first array's element.
@@ -405,7 +404,8 @@ std::vector<float> measure_performance(int factor_size, int l,int dimention_bloc
     // LOADED ALL.
     dim3 blockDim(dimention_block,dimention_block);
     dim3 gridDim((COLS+ blockDim.x -1)/blockDim.x,(ROWS+ blockDim.y - 1)/blockDim.y );
-    size_t num_bytes = (dimention_block+ 2*radius)* (dimention_block+ 2*radius)*3*sizeof(unsigned char);
+    size_t num_bytes_soa = (dimention_block+ 2*radius)* (dimention_block+ 2*radius)*3*sizeof(unsigned char);
+    size_t num_bytes_aos = (dimention_block+ 2*radius)* (dimention_block+ 2*radius)*sizeof(AoS);
 
     // To call the kernel defined, in general:
     // 1. the first one is the dimention of the grid -> how many blocks to work with.
@@ -416,38 +416,42 @@ std::vector<float> measure_performance(int factor_size, int l,int dimention_bloc
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     float milliseconds= 0.0f;
-    int ITERATIONS = 100;
 
     cudaEventRecord(start);
-    for (int i=0; i<ITERATIONS; i++){
+    for (int i=0; i<iterations; i++){
         if (tile){
-            tiling_convolution_AoS_dynamic<<<gridDim, blockDim, num_bytes>>>(d_input_aos, d_output_aos,COLS, ROWS,l);
+            tiling_convolution_AoS_dynamic<<<gridDim, blockDim, num_bytes_aos>>>(d_input_aos, d_output_aos,COLS, ROWS,l);
         }else{
             convolution_AoS <<<gridDim, blockDim>>>(d_input_aos, d_output_aos,COLS, ROWS, l);
         }
+        CUDA_CHECK_RETURN(cudaGetLastError()); 
+        CUDA_CHECK_RETURN(cudaDeviceSynchronize());
     }
     cudaEventRecord(stop);
 
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&milliseconds, start, stop);
-    time.push_back(milliseconds / ITERATIONS);
+    time.push_back(milliseconds / iterations);
     
 
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     milliseconds=0.0f;
     cudaEventRecord(start);
-    for(int i=0; i<ITERATIONS; i++){
+    for(int i=0; i<iterations; i++){
         if (tile){
-            tiling_convolution_SoA_dynamic<<<gridDim, blockDim,num_bytes>>>(d_soa_wrapper.R, d_soa_wrapper.G, d_soa_wrapper.B, d_soa_output, ROWS, COLS, l);
+            tiling_convolution_SoA_dynamic<<<gridDim, blockDim, num_bytes_soa>>>(d_soa_wrapper.R, d_soa_wrapper.G, d_soa_wrapper.B, d_soa_output, ROWS, COLS, l);
         }else{
             convolution_SoA<<<gridDim, blockDim>>>(d_soa_wrapper.R, d_soa_wrapper.G, d_soa_wrapper.B, d_soa_output, ROWS, COLS, l);
         }
+        CUDA_CHECK_RETURN(cudaGetLastError()); 
+        CUDA_CHECK_RETURN(cudaDeviceSynchronize());
     }
     cudaEventRecord(stop);
+
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&milliseconds, start, stop);
-    time.push_back(milliseconds / ITERATIONS);
+    time.push_back(milliseconds / iterations);
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
@@ -587,18 +591,18 @@ void reset_costant_memory(){
 }
 
 
-void confront_layout(){
+void confront_layout(bool tile_layout=false){
     int size = 3;
     std::vector<float> filter = create_gaussian_filter(size);
 
     allocate_costant_mem(filter);
 
-    std::vector<int> factor_resize = {1,2,3,4,5,10,15,20,40};
+    std::vector<int> factor_resize = {1,2,3,4,5,10,15,20,40,60,100};
     std::vector<float> time_aos;    
     std::vector<float> time_soa;
 
     for (auto factor : factor_resize){
-        std::vector<float> time = measure_performance(factor, size);
+        std::vector<float> time = measure_performance(factor, size, 16 , tile_layout);
         time_aos.push_back(time[0]);
         time_soa.push_back(time[1]);
     }
@@ -609,9 +613,16 @@ void confront_layout(){
     }
 
     reset_costant_memory();
-    
+
+    std::string path_layout;
+    if(tile_layout){
+        path_layout = "./experiments_results/performance_layout_Tiled.csv";
+    }else{
+        path_layout = "./experiments_results/performance_layout_NTiled.csv";
+    }
+
     // Save in CSV
-    std::ofstream csv_file("./experiments_results/performance_layout.csv");
+    std::ofstream csv_file(path_layout);
     csv_file << "Factor,AOS time,SOA time\n";
     for (size_t i = 0; i < factor_resize.size(); i++){
         csv_file << factor_resize[i] << "," << time_aos[i] << "," << time_soa[i] << "\n";
@@ -694,11 +705,10 @@ void dimention_block_test(){
     csv_file.close();
 }
 
-
 int main(int argc, char* argv[]){
 
     if (argc > 1 && std::string(argv[1]) == "visualize") {
-        int size_filter = 11;
+        int size_filter = 31;
         int factor_size = 3;
 
         std::string type_filter = "";
@@ -706,20 +716,37 @@ int main(int argc, char* argv[]){
             type_filter = argv[2];
         }
         visualize_convolution(size_filter, factor_size, type_filter);
+        
+        cudaDeviceSynchronize();
+        cudaDeviceReset();
         return 0;
-    }else{
+        
+    } else if(argc > 1 && std::string(argv[1]) == "profile"){     
+        warmup_gpu();
+        int size = 11;
+        int factor = 40;
+        std::vector<float> filter = create_gaussian_filter(size);
+        allocate_costant_mem(filter);
 
+        measure_performance(factor, size, 16, false, false, 100);
+        
+    } else {
         warmup_gpu();
 
-        //Create dir to save results
         std::filesystem::create_directory("./experiments_results");
-
-        confront_layout();
-
+        printf("Running performance comparison between AoS and SoA layouts without tiling...\n");
+        confront_layout(false);
+        printf("\nRunning performance comparison between AoS and SoA layouts with tiling...\n");
+        confront_layout(true);
+        printf("\nRunning performance comparison for different filter sizes with tiling...\n");
         tiling_test();
-
+        printf("\nRunning performance comparison for different block dimensions with tiling...\n");
         dimention_block_test();
     }    
-    return 0;
 
+
+    cudaDeviceSynchronize();  
+    cudaDeviceReset(); 
+
+    return 0;
 }

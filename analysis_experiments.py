@@ -19,7 +19,8 @@ def load_and_preprocess_data():
     print("Loading performance data...")
     try:
         seq_layout = pd.read_csv("experiments_results/performance_layout_seq.csv")
-        cuda_layout = pd.read_csv("experiments_results/performance_layout.csv")
+        cuda_layout_NT = pd.read_csv("experiments_results/performance_layout_NTiled.csv")
+        cuda_layout_T = pd.read_csv("experiments_results/performance_layout_Tiled.csv")
         cuda_tiling = pd.read_csv("experiments_results/performance_tiling.csv")
         cuda_dim_block = pd.read_csv("experiments_results/performance_dim_block.csv")
     except FileNotFoundError as e:
@@ -29,16 +30,17 @@ def load_and_preprocess_data():
 
     print(" Data loaded successfully")
     print(f"  Sequential data points: {len(seq_layout)}")
-    print(f"  CUDA data points: {len(cuda_layout)}\n")
+    print(f"  CUDA data points: {len(cuda_layout_NT)}\n")
 
-    common_factors = sorted(list(set(seq_layout['Factor'].values) & set(cuda_layout['Factor'].values)))
+    common_factors = sorted(list(set(seq_layout['Factor'].values) & set(cuda_layout_NT['Factor'].values)))
     seq_layout = seq_layout[seq_layout['Factor'].isin(common_factors)].reset_index(drop=True)
-    cuda_layout = cuda_layout[cuda_layout['Factor'].isin(common_factors)].reset_index(drop=True)
+    cuda_layout_NT = cuda_layout_NT[cuda_layout_NT['Factor'].isin(common_factors)].reset_index(drop=True)
+    cuda_layout_T = cuda_layout_T[cuda_layout_T['Factor'].isin(common_factors)].reset_index(drop=True)
 
     print(f"  Common factors: {common_factors}")
     print(f"  Working with {len(seq_layout)} common data points\n")
     
-    return seq_layout, cuda_layout, cuda_tiling, cuda_dim_block
+    return seq_layout, cuda_layout_NT, cuda_layout_T, cuda_tiling, cuda_dim_block
 
 def plot_sequential_vs_cuda(seq_df, cuda_df, output_dir):
     print("Generating Figure 1: Sequential vs CUDA Layout Comparison...")
@@ -127,29 +129,40 @@ def plot_speedup_analysis(seq_df, cuda_df, output_dir):
     plt.close()
     return speedup_aos, speedup_soa 
 
-def plot_layout_comparison_cuda(cuda_df, output_dir):
+def plot_layout_comparison_cuda(cuda_df, cuda_tiled, output_dir):
     print("Generating Figure 3: AoS vs SoA on GPU...")
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, axes = plt.subplots(2, 1, figsize=(12, 10))
 
     x = np.arange(len(cuda_df['Factor']))
     width = 0.35
 
-    ax.bar(x - width/2, cuda_df['AOS time'], width, label='CUDA AoS', alpha=0.8, color='steelblue', edgecolor='black')
-    ax.bar(x + width/2, cuda_df['SOA time'], width, label='CUDA SoA', alpha=0.8, color='darkorange', edgecolor='black')
+    datasets = [
+        (cuda_df, 'Non-Tiled: Data Layout Impact (Global Memory)'),
+        (cuda_tiled, 'Tiled: Data Layout Impact (Shared Memory Bank Conflicts)')
+    ]
 
-    ax.set_xlabel('Resize Factor', fontsize=11, fontweight='bold')
-    ax.set_ylabel('Time (ms)', fontsize=11, fontweight='bold')
-    ax.set_title('Data Layout Impact on GPU Performance', fontsize=12, fontweight='bold')
-    ax.set_xticks(x)
-    ax.set_xticklabels(cuda_df['Factor'])
-    ax.set_yscale('log')
-    ax.legend(fontsize=10)
-    ax.grid(True, alpha=0.3, axis='y')
+    for i, (df, title) in enumerate(datasets):
+        ax = axes[i]
+        
+        # Disegna le barre
+        ax.bar(x - width/2, df['AOS time'], width, label='CUDA AoS', alpha=0.8, color='steelblue', edgecolor='black')
+        ax.bar(x + width/2, df['SOA time'], width, label='CUDA SoA', alpha=0.8, color='darkorange', edgecolor='black')
 
-    for i in range(len(cuda_df['Factor'])):
-        ratio = cuda_df['SOA time'].iloc[i] / cuda_df['AOS time'].iloc[i]
-        y_pos = max(cuda_df['AOS time'].iloc[i], cuda_df['SOA time'].iloc[i]) * 1.3
-        ax.text(i, y_pos, f'{ratio:.2f}x', ha='center', va='bottom', fontsize=9, fontweight='bold')
+        # Formattazione assi e titoli
+        ax.set_xlabel('Resize Factor', fontsize=11, fontweight='bold')
+        ax.set_ylabel('Time (ms)', fontsize=11, fontweight='bold')
+        ax.set_title(title, fontsize=13, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(df['Factor'])
+        ax.set_yscale('log')
+        ax.legend(fontsize=10)
+        ax.grid(True, alpha=0.3, axis='y')
+
+        # Aggiunta del testo con il rapporto (Ratio)
+        for j in range(len(df['Factor'])):
+            ratio = df['SOA time'].iloc[j] / df['AOS time'].iloc[j]
+            y_pos = max(df['AOS time'].iloc[j], df['SOA time'].iloc[j]) * 1.3
+            ax.text(j, y_pos, f'{ratio:.2f}x', ha='center', va='bottom', fontsize=9, fontweight='bold')
 
     plt.tight_layout()
     filename = "03_layout_comparison_cuda.png"
@@ -262,12 +275,12 @@ def print_performance_summary(seq_df, cuda_df, cuda_tiling, cuda_dim_block, spee
 
 def main():
     output_dir = setup_environment()
-    seq_df, cuda_df, cuda_tiling, cuda_dim_block = load_and_preprocess_data()
+    seq_df, cuda_df, cuda_tiled, cuda_tiling, cuda_dim_block = load_and_preprocess_data()
     
 
     plot_sequential_vs_cuda(seq_df, cuda_df, output_dir)
     speedup_aos, speedup_soa = plot_speedup_analysis(seq_df, cuda_df, output_dir)
-    plot_layout_comparison_cuda(cuda_df, output_dir)
+    plot_layout_comparison_cuda(cuda_df,cuda_tiled, output_dir)
     plot_tiling_effect(cuda_tiling, output_dir)
     plot_block_dimension_optimization(cuda_dim_block, output_dir)
     

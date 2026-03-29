@@ -5,7 +5,7 @@
 #include <vector>
 #include <cmath>
 #include <iomanip>
-#define ITERATIONS 100
+#define ITERATIONS 10
 // ==================== SEQUENTIAL AoS ==================
 typedef struct AoS_Layout {
     unsigned char R;
@@ -16,12 +16,12 @@ typedef struct AoS_Layout {
 AoS* load_aos_layout(const cv::Mat &image) {
     int ROWS = image.rows;
     int COLS = image.cols;
-    int N = ROWS * COLS;
+    size_t N = (size_t)ROWS * COLS;
     AoS *aos_data = new AoS[N];
 
     for (int y = 0; y < ROWS; y++) {
         for (int x = 0; x < COLS; x++) {
-            int idx = y * COLS + x;
+            size_t idx = (size_t)y * COLS + x;
             cv::Vec3b pixel = image.at<cv::Vec3b>(y, x);
             aos_data[idx].B = pixel[0];
             aos_data[idx].G = pixel[1];
@@ -31,16 +31,17 @@ AoS* load_aos_layout(const cv::Mat &image) {
     return aos_data;
 }
 
-AoS* convolution_aos(const AoS* data, const int* kernel, int dim_kernel, int rows, int cols) {
-    AoS* output_data = new AoS[rows * cols];
+AoS* convolution_aos(const AoS* data, const float* kernel, int dim_kernel, int rows, int cols) {
+    size_t N = (size_t)rows * cols;
+    AoS* output_data = new AoS[N];
     int bound = dim_kernel / 2;
 
     for (int y = 0; y < rows; y++) {
         for (int x = 0; x < cols; x++) {
-            int idx = y * cols + x;
-            int sum_R = 0;
-            int sum_G = 0;
-            int sum_B = 0;
+            size_t idx = (size_t)y * cols + x;
+            float sum_R = 0;
+            float sum_G = 0;
+            float sum_B = 0;
 
             for (int ky = -bound; ky <= bound; ky++) {
                 for (int kx = -bound; kx <= bound; kx++) {
@@ -48,9 +49,9 @@ AoS* convolution_aos(const AoS* data, const int* kernel, int dim_kernel, int row
                     int nx = x + kx;
 
                     if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
-                        int i = ny * cols + nx;
+                        size_t i = (size_t)ny * cols + nx;
                         int k_idx = (ky + bound) * dim_kernel + (kx + bound);
-                        int coeff = kernel[k_idx];
+                        float coeff = kernel[k_idx];
 
                         sum_R += coeff * data[i].R;
                         sum_G += coeff * data[i].G;
@@ -59,9 +60,9 @@ AoS* convolution_aos(const AoS* data, const int* kernel, int dim_kernel, int row
                 }
             }
 
-            output_data[idx].R = std::clamp(sum_R, 0, 255);
-            output_data[idx].G = std::clamp(sum_G, 0, 255);
-            output_data[idx].B = std::clamp(sum_B, 0, 255);
+            output_data[idx].R = std::clamp((int)(sum_R ), 0, 255);
+            output_data[idx].G = std::clamp((int)(sum_G), 0, 255);
+            output_data[idx].B = std::clamp((int)(sum_B), 0, 255);
         }
     }
     return output_data;
@@ -78,7 +79,7 @@ typedef struct Layout_SoA {
 SoA* load_soa_layout(const cv::Mat &image) {
     int ROWS = image.rows;
     int COLS = image.cols;
-    int N = ROWS * COLS;
+    size_t N = (size_t)ROWS * COLS;
 
     SoA* soa_data = new SoA();
     soa_data->R = new unsigned char[N];
@@ -87,7 +88,7 @@ SoA* load_soa_layout(const cv::Mat &image) {
 
     for (int y = 0; y < ROWS; y++) {
         for (int x = 0; x < COLS; x++) {
-            int idx = y * COLS + x;
+            size_t idx = (size_t)y * COLS + x;
             cv::Vec3b pixel = image.at<cv::Vec3b>(y, x);
             soa_data->B[idx] = pixel[0];
             soa_data->G[idx] = pixel[1];
@@ -97,9 +98,9 @@ SoA* load_soa_layout(const cv::Mat &image) {
     return soa_data;
 }
 
-SoA* convolution_soa(const SoA* data, const int* kernel, int dim_kernel, int rows, int cols) {
+SoA* convolution_soa(const SoA* data, const float* kernel, int dim_kernel, int rows, int cols) {
     SoA* output_data = new SoA();
-    int N = rows * cols;
+    size_t N = (size_t)rows * cols;
     output_data->R = new unsigned char[N];
     output_data->G = new unsigned char[N];
     output_data->B = new unsigned char[N];
@@ -108,10 +109,10 @@ SoA* convolution_soa(const SoA* data, const int* kernel, int dim_kernel, int row
 
     for (int y = 0; y < rows; y++) {
         for (int x = 0; x < cols; x++) {
-            int idx = y * cols + x;
-            int sum_R = 0;
-            int sum_G = 0;
-            int sum_B = 0;
+            size_t idx = (size_t)y * cols + x;
+            float sum_R = 0;
+            float sum_G = 0;
+            float sum_B = 0;
 
             for (int ky = -bound; ky <= bound; ky++) {
                 for (int kx = -bound; kx <= bound; kx++) {
@@ -119,9 +120,9 @@ SoA* convolution_soa(const SoA* data, const int* kernel, int dim_kernel, int row
                     int nx = x + kx;
 
                     if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
-                        int i = ny * cols + nx;
+                        size_t i = (size_t)ny * cols + nx;
                         int k_idx = (ky + bound) * dim_kernel + (kx + bound);
-                        int coeff = kernel[k_idx];
+                        float coeff = kernel[k_idx];
 
                         sum_R += coeff * data->R[i];
                         sum_G += coeff * data->G[i];
@@ -130,9 +131,9 @@ SoA* convolution_soa(const SoA* data, const int* kernel, int dim_kernel, int row
                 }
             }
 
-            output_data->R[idx] = std::clamp(sum_R, 0, 255);
-            output_data->G[idx] = std::clamp(sum_G, 0, 255);
-            output_data->B[idx] = std::clamp(sum_B, 0, 255);
+            output_data->R[idx] = std::clamp((int)(sum_R), 0, 255);
+            output_data->G[idx] = std::clamp((int)(sum_G), 0, 255);
+            output_data->B[idx] = std::clamp((int)(sum_B), 0, 255);
         }
     }
     return output_data;
@@ -170,7 +171,7 @@ std::vector<float> create_gaussian_filter(int size, float sigma = -1.0f) {
 
 
 void dimention_test(const cv::Mat &image) {
-    std::vector<int> resize_factors ={1,2,3,4,5,10,20,40};
+    std::vector<int> resize_factors ={1, 2, 3, 4, 5, 10, 20, 40, 60, 100};
     std::vector<float> filter = create_gaussian_filter(3);
     std::vector<double> times_soa;
     std::vector<double> times_aos;
@@ -188,7 +189,7 @@ void dimention_test(const cv::Mat &image) {
         std::cout << "Resized to: " << COLS << "x" << ROWS << std::endl;
         auto start_seq = std::chrono::high_resolution_clock::now();
         for (int i = 0; i < ITERATIONS; i++) {
-            SoA* output = convolution_soa(soa_data, (int*)filter.data(), 3, ROWS, COLS);
+            SoA* output = convolution_soa(soa_data, filter.data(), 3, ROWS, COLS);
             delete[] output->R;
             delete[] output->G;
             delete[] output->B;
@@ -201,7 +202,7 @@ void dimention_test(const cv::Mat &image) {
 
         start_seq = std::chrono::high_resolution_clock::now();
         for (int i = 0; i < ITERATIONS; i++) {
-            AoS* output = convolution_aos(aos_data, (int*)filter.data(), 3, ROWS, COLS);
+            AoS* output = convolution_aos(aos_data, filter.data(), 3, ROWS, COLS);
             delete[] output;
         }    
         end_seq = std::chrono::high_resolution_clock::now();

@@ -7,7 +7,8 @@ find_package(CUDA REQUIRED)
 
 add_executable(main_cuda main.cu)
 
-set_property(TARGET main_cuda PROPERTY CUDA_ARCHITECTURES 100)
+
+set_property(TARGET main_cuda PROPERTY CUDA_ARCHITECTURES 90)
 target_include_directories(main_cuda PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 target_include_directories(main_cuda PUBLIC ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(main_cuda ${OpenCV_LIBS})
