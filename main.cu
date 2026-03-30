@@ -635,26 +635,26 @@ void confront_layout(bool tile_layout=false){
 void tiling_test(){
     std::vector<int> dim_filter = {3, 5, 7, 9, 11, 15, 21, 25};
     int factor_size = 20;
-    std::vector<float> soa_tiled_time;
-    std::vector<float> soa_notiled_time;
-    printf("Size\tSOA Tiled Time\tSOA Notiled Time\n");
+    std::vector<float> aos_tiled_time;
+    std::vector<float> aos_notiled_time;
+    printf("Size\tAOS Tiled Time\tAOS Notiled Time\n");
     for (auto size : dim_filter){
         std::vector<float> filter = create_gaussian_filter(size);
         allocate_costant_mem(filter);
         //AoS and then SoA, we take the second element.
         std::vector<float> time = measure_performance(factor_size, size,16,true);
-        soa_tiled_time.push_back(time[1]);
+        aos_tiled_time.push_back(time[0]);
         time = measure_performance(factor_size, size,16,false);
-        soa_notiled_time.push_back(time[1]);
+        aos_notiled_time.push_back(time[0]);
         reset_costant_memory();
-        printf("%d\t%.6f\t%.6f\n", size, soa_tiled_time.back(), soa_notiled_time.back());
+        printf("%d\t%.6f\t%.6f\n", size, aos_tiled_time.back(), aos_notiled_time.back());
     }
 
     // Save in CSV
     std::ofstream csv_file("./experiments_results/performance_tiling.csv");
-    csv_file << "Size,SOA Tiled Time,SOA Notiled Time\n";
+    csv_file << "Size,AOS Tiled Time,AOS Notiled Time\n";
     for (size_t i = 0; i < dim_filter.size(); i++){
-        csv_file << dim_filter[i] << "," << soa_tiled_time[i] << "," << soa_notiled_time[i] << "\n";
+        csv_file << dim_filter[i] << "," << aos_tiled_time[i] << "," << aos_notiled_time[i] << "\n";
     }
     csv_file.close();
 }
@@ -685,22 +685,22 @@ void dimention_block_test(){
     std::vector<int> dim_block = {2, 4, 8, 16, 32};
     int factor_size = 20;
     int size_filter = 11;
-    std::vector<float> soa_tiled_time;
-    printf("Dim Block\tSOA Tiled Time\n");
+    std::vector<float> aos_tiled_time;
+    printf("Dim Block\tAOS Tiled Time\n");
     for (auto dim : dim_block){
         std::vector<float> filter = create_gaussian_filter(size_filter);
         allocate_costant_mem(filter);
         std::vector<float> time = measure_performance(factor_size, size_filter, dim,true);
-        soa_tiled_time.push_back(time[1]);
+        aos_tiled_time.push_back(time[0]);
         reset_costant_memory();
-        printf("%d\t%.6f\n", dim, soa_tiled_time.back());
+        printf("%d\t%.6f\n", dim, aos_tiled_time.back());
     }
 
     // Save in CSV
     std::ofstream csv_file("./experiments_results/performance_dim_block.csv");
-    csv_file << "Dim Block,SOA Tiled Time\n";
+    csv_file << "Dim Block,AOS Tiled Time\n";
     for (size_t i = 0; i < dim_block.size(); i++){
-        csv_file << dim_block[i] << "," << soa_tiled_time[i] << "\n";
+        csv_file << dim_block[i] << "," << aos_tiled_time[i] << "\n";
     }
     csv_file.close();
 }

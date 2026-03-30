@@ -5,7 +5,7 @@
 #include <vector>
 #include <cmath>
 #include <iomanip>
-#define ITERATIONS 10
+#define ITERATIONS 50
 // ==================== SEQUENTIAL AoS ==================
 typedef struct AoS_Layout {
     unsigned char R;

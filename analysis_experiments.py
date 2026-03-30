@@ -178,20 +178,20 @@ def plot_tiling_effect(cuda_tiling, output_dir):
     x = np.arange(len(cuda_tiling['Size']))
     width = 0.35
 
-    ax.bar(x - width/2, cuda_tiling['SOA Tiled Time'], width, label='Tiled', alpha=0.8, color='forestgreen', edgecolor='black')
-    ax.bar(x + width/2, cuda_tiling['SOA Notiled Time'], width, label='Non-Tiled', alpha=0.8, color='salmon', edgecolor='black')
+    ax.bar(x - width/2, cuda_tiling['AOS Tiled Time'], width, label='Tiled', alpha=0.8, color='forestgreen', edgecolor='black')
+    ax.bar(x + width/2, cuda_tiling['AOS Notiled Time'], width, label='Non-Tiled', alpha=0.8, color='salmon', edgecolor='black')
 
     ax.set_xlabel('Filter Size', fontsize=11, fontweight='bold')
     ax.set_ylabel('Time (ms)', fontsize=11, fontweight='bold')
-    ax.set_title('Tiling Optimization Impact (SoA Layout)', fontsize=12, fontweight='bold')
+    ax.set_title('Tiling Optimization Impact (AOS Layout)', fontsize=12, fontweight='bold')
     ax.set_xticks(x)
     ax.set_xticklabels(cuda_tiling['Size'])
     ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3, axis='y')
 
     for i in range(len(cuda_tiling['Size'])):
-        improvement = (1 - cuda_tiling['SOA Tiled Time'].iloc[i] / cuda_tiling['SOA Notiled Time'].iloc[i]) * 100
-        y_pos = max(cuda_tiling['SOA Tiled Time'].iloc[i], cuda_tiling['SOA Notiled Time'].iloc[i]) * 1
+        improvement = (1 - cuda_tiling['AOS Tiled Time'].iloc[i] / cuda_tiling['AOS Notiled Time'].iloc[i]) * 100
+        y_pos = max(cuda_tiling['AOS Tiled Time'].iloc[i], cuda_tiling['AOS Notiled Time'].iloc[i]) * 1
         ax.text(i, y_pos + 1, f'{improvement:.1f}%', ha='center', va='bottom', fontsize=8, fontweight='bold')
 
     plt.tight_layout()
@@ -204,20 +204,20 @@ def plot_block_dimension_optimization(cuda_dim_block, output_dir):
     print("Generating Figure 5: Block Dimension Optimization...")
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    ax.plot(cuda_dim_block['Dim Block'], cuda_dim_block['SOA Tiled Time'], 'o-', linewidth=2.5, markersize=10, color='darkblue')
-    ax.fill_between(cuda_dim_block['Dim Block'], cuda_dim_block['SOA Tiled Time'], alpha=0.3, color='lightblue')
+    ax.plot(cuda_dim_block['Dim Block'], cuda_dim_block['AOS Tiled Time'], 'o-', linewidth=2.5, markersize=10, color='darkblue')
+    ax.fill_between(cuda_dim_block['Dim Block'], cuda_dim_block['AOS Tiled Time'], alpha=0.3, color='lightblue')
 
     ax.set_xlabel('Block Dimension (DxD threads)', fontsize=11, fontweight='bold')
     ax.set_ylabel('Time (ms)', fontsize=11, fontweight='bold')
-    ax.set_title('GPU Block Dimension Optimization (Tiled SoA)', fontsize=12, fontweight='bold')
+    ax.set_title('GPU Block Dimension Optimization (Tiled AOS)', fontsize=12, fontweight='bold')
     ax.set_xticks(cuda_dim_block['Dim Block'])
     ax.grid(True, alpha=0.3)
 
-    optimal_idx = cuda_dim_block['SOA Tiled Time'].idxmin()
+    optimal_idx = cuda_dim_block['AOS Tiled Time'].idxmin()
     optimal_dim = cuda_dim_block.loc[optimal_idx, 'Dim Block']
-    optimal_time = cuda_dim_block.loc[optimal_idx, 'SOA Tiled Time']
-    
-    ax.plot(optimal_dim, optimal_time, 'r*', markersize=20, 
+    optimal_time = cuda_dim_block.loc[optimal_idx, 'AOS Tiled Time']
+
+    ax.plot(optimal_dim, optimal_time, 'r*', markersize=20,
             label=f'Optimal: {int(optimal_dim)}x{int(optimal_dim)} ({optimal_time:.2f}ms)')
     ax.legend(fontsize=10)
 
@@ -256,18 +256,18 @@ def print_performance_summary(seq_df, cuda_df, cuda_tiling, cuda_dim_block, spee
 
     print("\n TILING OPTIMIZATION:")
     print("-" * 70)
-    tiling_gain = ((cuda_tiling['SOA Notiled Time'] - cuda_tiling['SOA Tiled Time']) / cuda_tiling['SOA Notiled Time'] * 100)
+    tiling_gain = ((cuda_tiling['AOS Notiled Time'] - cuda_tiling['AOS Tiled Time']) / cuda_tiling['AOS Notiled Time'] * 100)
     print(f"  Average Improvement: {tiling_gain.mean():.2f}%")
     print(f"  Max Improvement:     {tiling_gain.max():.2f}% (Filter Size {cuda_tiling.loc[tiling_gain.idxmax(), 'Size']:.0f}x{int(cuda_tiling.loc[tiling_gain.idxmax(), 'Size'])})")
     print(f"  Min Improvement:     {tiling_gain.min():.2f}% (Filter Size {cuda_tiling.loc[tiling_gain.idxmin(), 'Size']:.0f}x{int(cuda_tiling.loc[tiling_gain.idxmin(), 'Size'])})")
 
     print("\n  BLOCK DIMENSION OPTIMIZATION:")
     print("-" * 70)
-    optimal_block = cuda_dim_block.loc[cuda_dim_block['SOA Tiled Time'].idxmin()]
-    worst_block = cuda_dim_block.loc[cuda_dim_block['SOA Tiled Time'].idxmax()]
-    print(f"  Optimal Block Size:  {int(optimal_block['Dim Block'])}x{int(optimal_block['Dim Block'])} ({optimal_block['SOA Tiled Time']:.4f} ms)")
-    print(f"  Worst Block Size:    {int(worst_block['Dim Block'])}x{int(worst_block['Dim Block'])} ({worst_block['SOA Tiled Time']:.4f} ms)")
-    print(f"  Improvement:         {(worst_block['SOA Tiled Time'] / optimal_block['SOA Tiled Time'] - 1) * 100:.1f}%")
+    optimal_block = cuda_dim_block.loc[cuda_dim_block['AOS Tiled Time'].idxmin()]
+    worst_block = cuda_dim_block.loc[cuda_dim_block['AOS Tiled Time'].idxmax()]
+    print(f"  Optimal Block Size:  {int(optimal_block['Dim Block'])}x{int(optimal_block['Dim Block'])} ({optimal_block['AOS Tiled Time']:.4f} ms)")
+    print(f"  Worst Block Size:    {int(worst_block['Dim Block'])}x{int(worst_block['Dim Block'])} ({worst_block['AOS Tiled Time']:.4f} ms)")
+    print(f"  Improvement:         {(worst_block['AOS Tiled Time'] / optimal_block['AOS Tiled Time'] - 1) * 100:.1f}%")
 
     print("\n" + "="*70)
     print(f" All plots saved to: {output_dir.absolute()}/")
