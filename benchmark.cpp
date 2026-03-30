@@ -228,7 +228,7 @@ void dimention_test(const cv::Mat &image) {
 
 
 int main() {
-    const std::string IMAGE_PATH = "img_template.jpeg";
+    const std::string IMAGE_PATH = "images/img_template.jpeg";
     
     cv::Mat image = cv::imread(IMAGE_PATH);
     if (image.empty()) {
