@@ -365,7 +365,7 @@ __global__ void tiling_convolution_SoA_dynamic(uchar* array_R, uchar* array_G, u
 
 
 
-std::vector<float> measure_performance(int factor_size, int l,int dimention_block=16, bool tile=false, bool visualization = false, int iterations = 100,std::string filter_name="sharper"){
+std::vector<float> measure_performance(int factor_size, int l,int dimention_block=16, bool tile=false, bool visualization = false, int iterations = 100,std::string filter_name=""){
     int ROWS;
     int COLS;
     int radius= l/2;
@@ -474,6 +474,10 @@ std::vector<float> measure_performance(int factor_size, int l,int dimention_bloc
     CUDA_CHECK_RETURN(cudaFree(raw_pointer_storage));
     CUDA_CHECK_RETURN(cudaFree(d_soa_output));
     CUDA_CHECK_RETURN(cudaFree(d_input_aos));
+
+    if (filter_name.empty()){
+        filter_name = "sharper";
+    }
 
     if (visualization){
     display_image(h_output_aos, ROWS,COLS,filter_name);
