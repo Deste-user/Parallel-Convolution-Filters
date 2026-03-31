@@ -101,7 +101,7 @@ AoS* elaborate_img_load_aos(const std::string path_img, int* rows, int* cols, co
     return aos_struct;
 }
 
-void display_image(AoS* structure, int rows, int cols){
+void display_image(AoS* structure, int rows, int cols, std::string type_filter){
     cv::Mat img=  cv::Mat(rows, cols, CV_8UC3);
 
     for (int y=0; y < rows; y++){
@@ -112,12 +112,16 @@ void display_image(AoS* structure, int rows, int cols){
             img.at<cv::Vec3b>(y,x)[2]=structure[idx].R;
         }
     }
-    cv::imshow("Convolution with AoS Layout", img);
-    cv::imwrite("images/output_aos.jpeg", img); 
+    
+    cv::imshow("Convolution with AoS Layout " + type_filter, img);
+    if(! std::filesystem::exists("images/output_aos/")){
+        std::filesystem::create_directories("images/output_aos/");
+    }
+    cv::imwrite("images/output_aos/aos_" + type_filter + ".jpeg", img); 
     
 }
 
-void display_image(SoA structure, int rows, int cols){
+void display_image(SoA structure, int rows, int cols, std::string type_filter){
     cv::Mat img=  cv::Mat(rows, cols, CV_8UC3);
 
     for (int y=0; y < rows; y++){
@@ -128,8 +132,11 @@ void display_image(SoA structure, int rows, int cols){
             img.at<cv::Vec3b>(y,x)[2]=structure.R[idx];
         }
     }
-    cv::imshow("Convolution with SoA Layout", img);
-    cv::imwrite("images/output_soa.jpeg", img);    
+    cv::imshow("Convolution with SoA Layout " + type_filter, img);
+    if(! std::filesystem::exists("images/output_soa/")){
+        std::filesystem::create_directories("images/output_soa/");
+    }
+    cv::imwrite("images/output_soa/soa_" + type_filter + ".jpeg", img);    
 }
 
 //------------------------------- NOT TILING KERNELS--------------------------------------------
@@ -358,7 +365,7 @@ __global__ void tiling_convolution_SoA_dynamic(uchar* array_R, uchar* array_G, u
 
 
 
-std::vector<float> measure_performance(int factor_size, int l,int dimention_block=16, bool tile=false, bool visualization = false, int iterations = 100){
+std::vector<float> measure_performance(int factor_size, int l,int dimention_block=16, bool tile=false, bool visualization = false, int iterations = 100,std::string filter_name="sharper"){
     int ROWS;
     int COLS;
     int radius= l/2;
@@ -469,8 +476,8 @@ std::vector<float> measure_performance(int factor_size, int l,int dimention_bloc
     CUDA_CHECK_RETURN(cudaFree(d_input_aos));
 
     if (visualization){
-    display_image(h_output_aos, ROWS,COLS);
-    display_image(soa_struct,ROWS, COLS);
+    display_image(h_output_aos, ROWS,COLS,filter_name);
+    display_image(soa_struct,ROWS, COLS,filter_name);
     cv::waitKey(0);
     }
     
@@ -676,7 +683,7 @@ void visualize_convolution(int size_filter, int factor_size, std::string type_fi
         size_filter = 3;
     }
     allocate_costant_mem(filter);
-    measure_performance(factor_size, size_filter ,16,false, true);
+    measure_performance(factor_size, size_filter, 16,false, true, 100, type_filter);
     reset_costant_memory();
 }
 
