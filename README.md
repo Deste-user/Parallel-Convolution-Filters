@@ -1,4 +1,4 @@
-# Image Convolution: AoS vs SoA Performance Analysis
+# Image Convolution: Performance Analysis
 
 This C++ project implements and analyzes the performance of a convolution filter (Gaussian blur) applied to an image, comparing two different memory layouts: **AoS (Array of Structures)** and **SoA (Structure of Arrays)**.
 
