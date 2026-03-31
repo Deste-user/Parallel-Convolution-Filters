@@ -46,7 +46,7 @@ The main goal is to measure sequential execution times on the CPU as the image d
 
 ## System Requirements
 
-* **C++ Compiler:** Support for the C++18 standard or higher (e.g., GCC, Clang, MSVC).
+* **C++ Compiler:** Support for the C++17 standard or higher (e.g., GCC, Clang, MSVC).
 * **OpenCV:** Library for basic image reading, manipulation, and resizing.
 * **RAM:** At least 32 GB of memory is recommended to run the tests with `factor = 100` without triggering the OS OOM (Out Of Memory) Killer.
 *  Otherwise you have to modifies the hardcoded array of resize factor.
@@ -66,14 +66,18 @@ The main goal is to measure sequential execution times on the CPU as the image d
 ## Compilation and Execution
 
 ### Prerequisites
-Ensure you have the **CUDA Toolkit** and **OpenCV** installed on your system. The code uses standard C++18 features (`std::filesystem`) to automatically manage output directories, so a compatible compiler is required.
+Ensure you have the **CUDA Toolkit** and **OpenCV** installed on your system. The code uses standard C++17 features (`std::filesystem`) to automatically manage output directories, so a compatible compiler is required.
 As it is written in the CMakeList.txt it is used the optimized compilation for the sequential benchmark. 
 
+
 ### Compilation
-Use `nvcc` (NVIDIA CUDA Compiler) to compile the code. Make sure to link OpenCV and enable C++18:
+The project uses CMake to manage dependencies and optimization flags automatically. 
+To build the project in **Release** mode (optimized for performance):
 
 ```bash
-nvcc main.cu -o benchmark_cuda -std=c++17 `pkg-config --cflags --libs opencv4` -O3
+mkdir build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+make -j$(nproc)
 ```
 
 ### Execution
