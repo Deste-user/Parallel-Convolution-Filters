@@ -749,14 +749,14 @@ int main(int argc, char* argv[]){
         warmup_gpu();
 
         std::filesystem::create_directory("./experiments_results");
-        /*printf("Running performance comparison between AoS and SoA layouts without tiling...\n");
+        printf("Running performance comparison between AoS and SoA layouts without tiling...\n");
         confront_layout(false);
         printf("\nRunning performance comparison between AoS and SoA layouts with tiling...\n");
-        confront_layout(true);*/
+        confront_layout(true);
         printf("\nRunning performance comparison for different filter sizes with tiling...\n");
         tiling_test();
-        //printf("\nRunning performance comparison for different block dimensions with tiling...\n");
-        //dimention_block_test();
+        printf("\nRunning performance comparison for different block dimensions with tiling...\n");
+        dimention_block_test();
     }    
 
 

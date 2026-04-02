@@ -293,7 +293,7 @@ int main() {
     int N = ROWS * COLS;
 
     std::cout << "Original Image Size: " << COLS << "x" << ROWS << std::endl;
-    //dimention_test(image);
+    dimention_test(image);
     std::cout << "Kernel Study: " << std::endl;
     kernel_study(image);
 }
