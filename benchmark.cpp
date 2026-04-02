@@ -226,6 +226,58 @@ void dimention_test(const cv::Mat &image) {
     csv_file.close();
 }
 
+void kernel_study(const cv::Mat &image) {
+    std::vector<int> kernel_sizes = {3, 5, 7, 9, 11, 15, 21, 25};
+    cv::Mat resized;
+    cv::resize(image, resized ,cv::Size(), 20, 20);
+    std::vector<double> times_soa;
+    std::vector<double> times_aos;
+    int ROWS = resized.rows;
+    int COLS = resized.cols;
+    std::cout << "Resized to: " << COLS << "x" << ROWS << std::endl;
+    std::ofstream csv_file("./experiments_results/sequential_kernel_study.csv");
+    csv_file << "Size,AOS,SOA \n";
+    for (auto size : kernel_sizes) {
+        std::vector<float> filter = create_gaussian_filter(size);
+        
+
+        AoS* aos_data = load_aos_layout(resized);
+        SoA* soa_data = load_soa_layout(resized);
+
+        auto start_seq = std::chrono::high_resolution_clock::now();
+        for (int i = 0; i < ITERATIONS; i++) {
+            SoA* output = convolution_soa(soa_data, filter.data(), size, ROWS, COLS);
+            delete[] output->R;
+            delete[] output->G;
+            delete[] output->B;
+            delete output;
+        }
+        auto end_seq = std::chrono::high_resolution_clock::now();
+        double time_seq_soa = std::chrono::duration<double, std::milli>(end_seq - start_seq).count() / ITERATIONS;
+        times_soa.push_back(time_seq_soa);
+
+        start_seq = std::chrono::high_resolution_clock::now();
+        for (int i = 0; i < ITERATIONS; i++) {
+            AoS* output = convolution_aos(aos_data, filter.data(), size, ROWS, COLS);
+            delete[] output;
+        }    
+        end_seq = std::chrono::high_resolution_clock::now();
+        double time_seq_aos = std::chrono::duration<double, std::milli>(end_seq - start_seq).count() / ITERATIONS;
+        times_aos.push_back(time_seq_aos);
+        std::cout << "Kernel Size: " << size << "x" << size << ", AoS: " << std::fixed << std::setprecision(3) << time_seq_aos << " ms, SoA: " << std::fixed << std::setprecision(3) << time_seq_soa << " ms\n" << std::endl;
+        csv_file << size << "," << time_seq_aos << "," << time_seq_soa << "\n";
+
+        
+        delete[] aos_data;
+        delete[] soa_data->R;
+        delete[] soa_data->G;
+        delete[] soa_data->B;
+
+    }
+    csv_file.close();
+    
+}
+
 
 int main() {
     const std::string IMAGE_PATH = "images/img_template.jpeg";
@@ -241,6 +293,7 @@ int main() {
     int N = ROWS * COLS;
 
     std::cout << "Original Image Size: " << COLS << "x" << ROWS << std::endl;
-    dimention_test(image);
-
+    //dimention_test(image);
+    std::cout << "Kernel Study: " << std::endl;
+    kernel_study(image);
 }

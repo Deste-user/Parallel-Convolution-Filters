@@ -648,24 +648,28 @@ void tiling_test(){
     int factor_size = 20;
     std::vector<float> aos_tiled_time;
     std::vector<float> aos_notiled_time;
-    printf("Size\tAOS Tiled Time\tAOS Notiled Time\n");
+    std::vector<float> soa_tiled_time;
+    std::vector<float> soa_notiled_time;
+    printf("Size\tAOS Tiled Time\tAOS Notiled Time\tSOA Tiled Time\tSOA Notiled Time\n");
     for (auto size : dim_filter){
         std::vector<float> filter = create_gaussian_filter(size);
         allocate_costant_mem(filter);
         //AoS and then SoA, we take the second element.
         std::vector<float> time = measure_performance(factor_size, size,16,true);
         aos_tiled_time.push_back(time[0]);
+        soa_tiled_time.push_back(time[1]);
         time = measure_performance(factor_size, size,16,false);
         aos_notiled_time.push_back(time[0]);
+        soa_notiled_time.push_back(time[1]);
         reset_costant_memory();
         printf("%d\t%.6f\t%.6f\n", size, aos_tiled_time.back(), aos_notiled_time.back());
     }
 
     // Save in CSV
     std::ofstream csv_file("./experiments_results/performance_tiling.csv");
-    csv_file << "Size,AOS Tiled Time,AOS Notiled Time\n";
+    csv_file << "Size,AOS Tiled Time,AOS Notiled Time,SOA Tiled Time,SOA Notiled Time\n";
     for (size_t i = 0; i < dim_filter.size(); i++){
-        csv_file << dim_filter[i] << "," << aos_tiled_time[i] << "," << aos_notiled_time[i] << "\n";
+        csv_file << dim_filter[i] << "," << aos_tiled_time[i] << "," << aos_notiled_time[i] << "," << soa_tiled_time[i] << "," << soa_notiled_time[i] << "\n";
     }
     csv_file.close();
 }
@@ -745,14 +749,14 @@ int main(int argc, char* argv[]){
         warmup_gpu();
 
         std::filesystem::create_directory("./experiments_results");
-        printf("Running performance comparison between AoS and SoA layouts without tiling...\n");
+        /*printf("Running performance comparison between AoS and SoA layouts without tiling...\n");
         confront_layout(false);
         printf("\nRunning performance comparison between AoS and SoA layouts with tiling...\n");
-        confront_layout(true);
+        confront_layout(true);*/
         printf("\nRunning performance comparison for different filter sizes with tiling...\n");
         tiling_test();
-        printf("\nRunning performance comparison for different block dimensions with tiling...\n");
-        dimention_block_test();
+        //printf("\nRunning performance comparison for different block dimensions with tiling...\n");
+        //dimention_block_test();
     }    
 
 

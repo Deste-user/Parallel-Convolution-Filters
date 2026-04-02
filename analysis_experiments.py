@@ -17,6 +17,7 @@ def load_and_preprocess_data():
     print("Loading performance data...")
     try:
         seq_layout = pd.read_csv("experiments_results/performance_layout_seq.csv")
+        seq_kernel = pd.read_csv("experiments_results/sequential_kernel_study.csv")
         cuda_layout_NT = pd.read_csv("experiments_results/performance_layout_NTiled.csv")
         cuda_layout_T = pd.read_csv("experiments_results/performance_layout_Tiled.csv")
         cuda_tiling = pd.read_csv("experiments_results/performance_tiling.csv")
@@ -38,7 +39,7 @@ def load_and_preprocess_data():
     print(f"  Common factors: {common_factors}")
     print(f"  Working with {len(seq_layout)} common data points\n")
     
-    return seq_layout, cuda_layout_NT, cuda_layout_T, cuda_tiling, cuda_dim_block
+    return seq_layout, cuda_layout_NT, cuda_layout_T, cuda_tiling, cuda_dim_block, seq_kernel
 
 def plot_sequential_vs_cuda(seq_df, cuda_df, output_dir):
     print("Generating Figure 1: Sequential vs CUDA Layout Comparison...")
@@ -271,9 +272,167 @@ def print_performance_summary(seq_df, cuda_df, cuda_tiling, cuda_dim_block, spee
     print(f" All plots saved to: {output_dir.absolute()}/")
     print("="*70 + "\n")
 
+def plot_time_per_mac_cpu_vs_gpu(cuda_tiling, seq_kernel_df, output_dir):
+    print("Generating Figure: Time per MAC CPU vs GPU (Kernel Scaling)...")
+    
+    # Hai usato Factor 20 nel codice C++ (cv::resize(..., 20, 20))
+    # Assumo le dimensioni base 481x321. Se sono diverse, cambiale qui!
+    IMAGE_W = 481 * 20  
+    IMAGE_H = 321 * 20
+    CHANNELS = 3
+
+    kernel_sizes = cuda_tiling['Size'].values
+    
+    tiled_aos_mac_times = []
+    notiled_aos_mac_times = []
+    tiled_soa_mac_times = []
+    notiled_soa_mac_times = []
+    
+    cpu_mac_times = []
+
+    for k in kernel_sizes:
+        # MAC = Pixel_Output * Kernel_Area * Channels
+        out_w = IMAGE_W 
+        out_h = IMAGE_H
+        macs = (out_w * out_h) * (k ** 2) * CHANNELS
+        
+        # Tempi GPU (in millisecondi)
+        tiled_aos_time_ms = cuda_tiling.loc[cuda_tiling['Size'] == k, 'AOS Tiled Time'].values[0]
+        notiled_aos_time_ms = cuda_tiling.loc[cuda_tiling['Size'] == k, 'AOS Notiled Time'].values[0]
+        tiled_soa_time_ms = cuda_tiling.loc[cuda_tiling['Size'] == k, 'SOA Tiled Time'].values[0]
+        notiled_soa_time_ms = cuda_tiling.loc[cuda_tiling['Size'] == k, 'SOA Notiled Time'].values[0]
+
+        cpu_time_ms = seq_kernel_df.loc[seq_kernel_df['Size'] == k, 'AOS'].values[0]
+        
+        # Converte in picosecondi (ps) = ms * 1.000.000.000
+        # Uso i ps perché la GPU avrà valori piccolissimi (es. 50-100 ps)
+        tiled_ps_per_mac = (tiled_aos_time_ms * 1e9) / macs
+        notiled_ps_per_mac = (notiled_aos_time_ms * 1e9) / macs
+        tiled_soa_ps_per_mac = (tiled_soa_time_ms * 1e9) / macs
+        notiled_soa_ps_per_mac = (notiled_soa_time_ms * 1e9) / macs
+
+        cpu_ps_per_mac = (cpu_time_ms * 1e9) / macs
+        
+        tiled_aos_mac_times.append(tiled_ps_per_mac)
+        notiled_aos_mac_times.append(notiled_ps_per_mac)
+        tiled_soa_mac_times.append(tiled_soa_ps_per_mac)
+        notiled_soa_mac_times.append(notiled_soa_ps_per_mac)
+
+        cpu_mac_times.append(cpu_ps_per_mac)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    ax.plot(kernel_sizes, cpu_mac_times, 'D-', label='CPU Sequential', linewidth=2.5, markersize=8, color='#d62728')
+    
+    ax.plot(kernel_sizes, notiled_aos_mac_times, 'o-', label='GPU Non-Tiled AoS', linewidth=2.5, markersize=8, color='salmon')
+    ax.plot(kernel_sizes, tiled_aos_mac_times, 's-', label='GPU Tiled AoS', linewidth=2.5, markersize=8, color='forestgreen')
+    ax.plot(kernel_sizes, notiled_soa_mac_times, 'o--', label='GPU Non-Tiled SoA', linewidth=2.5, markersize=8, color='orange')
+    ax.plot(kernel_sizes, tiled_soa_mac_times, 's--', label='GPU Tiled SoA', linewidth=2.5, markersize=8, color='darkgreen')
+
+    ax.set_xlabel('Kernel Size (KxK)', fontsize=11, fontweight='bold')
+    ax.set_ylabel('Time per MAC (picoseconds)', fontsize=11, fontweight='bold')
+    ax.set_title('Compute vs Memory Bound: CPU vs GPU Efficiency per MAC', fontsize=13, fontweight='bold')
+    
+    # Siccome la CPU è MOLTO più lenta della GPU, usiamo una scala logaritmica sull'asse Y
+    ax.set_yscale('log')
+    
+    ax.set_xticks(kernel_sizes)
+    ax.set_xticklabels([f"{k}x{k}" for k in kernel_sizes])
+    ax.legend(fontsize=11)
+    ax.grid(True, which="both", ls="--", alpha=0.5)
+
+    plt.tight_layout()
+    filename = "06_time_per_mac_cpu_gpu.png"
+    plt.savefig(output_dir / filename, dpi=300, bbox_inches='tight')
+    print(f" Saved: {filename}\n")
+    plt.close()
+
+
+def kernel_time_speedup_analysis(seq_kernel_df, cuda_tiling, output_dir):
+    print("Generating Figure: Kernel Time Speedup Analysis...")
+    
+    kernel_sizes = seq_kernel_df['Size'].values
+    
+    cpu_times = []
+    no_tiled_gpu_times = []
+    tiled_gpu_times = []
+
+    for k in kernel_sizes:
+        cpu_time_ms = seq_kernel_df.loc[seq_kernel_df['Size'] == k, 'AOS'].values[0]
+        no_tiled_gpu_time_ms = cuda_tiling.loc[cuda_tiling['Size'] == k, 'AOS Notiled Time'].values[0]
+        tiled_gpu_time_ms = cuda_tiling.loc[cuda_tiling['Size'] == k, 'AOS Tiled Time'].values[0]
+        
+        cpu_times.append(cpu_time_ms)
+        no_tiled_gpu_times.append(no_tiled_gpu_time_ms)
+        tiled_gpu_times.append(tiled_gpu_time_ms)
+
+
+    speedups = np.array(cpu_times) / np.array(no_tiled_gpu_times)
+    speedups_tiled = np.array(cpu_times) / np.array(tiled_gpu_times)
+
+    # Image with notiled GPU speedup
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    ax.plot(kernel_sizes, speedups, 'o-', label='CPU vs GPU Speedup', linewidth=2.5, markersize=8, color='purple')
+
+    ax.set_xlabel('Kernel Size (KxK)', fontsize=11, fontweight='bold')
+    ax.set_ylabel('Speedup (CPU Time / GPU Time)', fontsize=11, fontweight='bold')
+    ax.set_title('Kernel Time Speedup: CPU vs GPU', fontsize=13, fontweight='bold')
+    
+    ax.set_xticks(kernel_sizes)
+    ax.set_xticklabels([f"{k}x{k}" for k in kernel_sizes])
+    ax.legend(fontsize=11)
+    ax.grid(True, which="both", ls="--", alpha=0.5)
+
+    plt.tight_layout()
+    filename = "07_kernel_time_speedup.png"
+    plt.savefig(output_dir / filename, dpi=300, bbox_inches='tight')
+    print(f" Saved: {filename}\n")
+    plt.close()
+
+    # Image with tiled GPU speedup
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(kernel_sizes, speedups_tiled, 's-', label='Speedup (Tiled)', linewidth=2.5, markersize=8, color='forestgreen')
+    ax.plot(kernel_sizes, speedups, 'o-', label='Speedup (Non-Tiled)', linewidth=2.5, markersize=8, color='salmon')
+
+    ax.set_xlabel('Kernel Size (KxK)', fontsize=11, fontweight='bold')
+    ax.set_ylabel('Speedup (CPU Time / GPU Time)', fontsize=11, fontweight='bold')
+    ax.set_title('Kernel Time Speedup: CPU vs GPU', fontsize=13, fontweight='bold')
+    
+    ax.set_xticks(kernel_sizes)
+    ax.set_xticklabels([f"{k}x{k}" for k in kernel_sizes])
+    ax.legend(fontsize=11)
+    ax.grid(True, which="both", ls="--", alpha=0.5)
+
+    plt.tight_layout()
+    filename = "09_kernel_time_speedup_withtiled.png"
+    plt.savefig(output_dir / filename, dpi=300, bbox_inches='tight')
+    print(f" Saved: {filename}\n")
+    plt.close()
+
+
+    # Time
+    print("\n Kernel Time Analysis:")
+    fig,ax = plt.subplots(figsize=(10, 6))
+    ax.plot(kernel_sizes, cpu_times, 'D-', label='CPU Sequential', linewidth=2.5, markersize=8, color='#d62728')
+    ax.plot(kernel_sizes, no_tiled_gpu_times, 's-', label='GPU', linewidth=2.5, markersize=8, color='forestgreen')
+    ax.set_xlabel('Kernel Size (KxK)', fontsize=11, fontweight='bold')
+    ax.set_ylabel('Time (ms)', fontsize=11, fontweight='bold')
+    ax.set_title('Kernel Execution Time: CPU vs GPU', fontsize=13, fontweight='bold')
+    ax.set_xticks(kernel_sizes)    
+    ax.set_xticklabels([f"{k}x{k}" for k in kernel_sizes])
+    ax.legend(fontsize=11)
+    ax.grid(True, which="both", ls="--", alpha=0.5)
+
+    plt.tight_layout()
+    filename = "08_kernel_execution_time.png"
+    plt.savefig(output_dir / filename, dpi=300, bbox_inches='tight')
+    print(f" Saved: {filename}\n")
+    plt.close()
+
 def main():
     output_dir = setup_environment()
-    seq_df, cuda_df, cuda_tiled, cuda_tiling, cuda_dim_block = load_and_preprocess_data()
+    seq_df, cuda_df, cuda_tiled, cuda_tiling, cuda_dim_block, seq_kernel = load_and_preprocess_data()
     
 
     plot_sequential_vs_cuda(seq_df, cuda_df, output_dir)
@@ -281,7 +440,10 @@ def main():
     plot_layout_comparison_cuda(cuda_df,cuda_tiled, output_dir)
     plot_tiling_effect(cuda_tiling, output_dir)
     plot_block_dimension_optimization(cuda_dim_block, output_dir)
-    
+
+    plot_time_per_mac_cpu_vs_gpu(cuda_tiling, seq_kernel, output_dir)
+    kernel_time_speedup_analysis(seq_kernel, cuda_tiling, output_dir)
+
     print_performance_summary(seq_df, cuda_df, cuda_tiling, cuda_dim_block, speedup_aos, speedup_soa, output_dir)
 
 if __name__ == "__main__":
