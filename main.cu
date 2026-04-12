@@ -46,6 +46,35 @@ static void CheckCUDAErrorAux(const char* file,unsigned line ,const char* statem
     exit(1);
 }
 
+void print_properties_gpu(){
+
+    int deviceId;
+    cudaGetDevice(&deviceId); 
+
+    cudaDeviceProp props;
+    cudaGetDeviceProperties(&props, deviceId); 
+
+
+    std::cout << "\n=== GPU ARCHITECTURE ===" << std::endl;
+    std::cout << "GPU Name: " << props.name << std::endl;
+    std::cout << "Number of SMs: " << props.multiProcessorCount << std::endl;
+    std::cout << "Max Threads per SM: " << props.maxThreadsPerMultiProcessor << std::endl;
+    std::cout << "Max Threads per Block: " << props.maxThreadsPerBlock << std::endl;
+    std::cout << "Max Registers per Block: " << props.regsPerBlock << std::endl;
+
+    std::cout << "\n=== MEMORY PROPERTIES ===" << std::endl;
+    std::cout << "Total Global Memory: " << props.totalGlobalMem / (1024 * 1024) << " MB" << std::endl;
+    std::cout << "L2 Cache: " << props.l2CacheSize / 1024 << " KB" << std::endl;
+    std::cout << "Shared Memory MAX per Block: " << props.sharedMemPerBlock / 1024 << " KB" << std::endl;
+    std::cout << "Shared Memory MAX per SM: " << props.sharedMemPerMultiprocessor / 1024 << " KB" << std::endl;
+    
+    std::cout << "\n=== EXECUTION PROPERTIES ===" << std::endl;
+    std::cout << "Warp Size: " << props.warpSize << " threads" << std::endl;
+    std::cout << "============================\n" << std::endl;
+
+}
+
+
 
 SoA elaborate_img_load_soa(const std::string path_img, int* rows, int* cols, const int resize_factor,bool visualization=false){
     cv::Mat image = cv::imread(path_img);
@@ -721,6 +750,8 @@ void dimention_block_test(){
 }
 
 int main(int argc, char* argv[]){
+
+    print_properties_gpu();
 
     if (argc > 1 && std::string(argv[1]) == "visualize") {
         int size_filter = 31;
