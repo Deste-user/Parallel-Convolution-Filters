@@ -74,6 +74,7 @@ The core of the project is a massive scaling stress test, pushing image dimensio
 * `images`: Directory that contains the image template, the scaled input of this template and all the output with different filters applied.
 * `reports`: Directory that contains some reports from the profiler.
 * `analysis_plot`: Directory that contains all the plots generated from the `analysis_experiments.py` script.
+* `documentation`: Directory that contains report of the project and presentation.
 * `CMakeLists.txt`: it contains directive for the compiler.
 ---
 
