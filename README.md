@@ -14,7 +14,7 @@ The core of the project is a massive scaling stress test, pushing image dimensio
 ## Implementation Highlights
 - **Single-Pass RGB Kernel:** Optimized execution that processes all color channels in a single launch, minimizing kernel launch overhead and maximizing register reuse.
 
--**Constant Memory Utilization:** Leverages GPU Constant Cache for filter weights to trigger warp broadcasting and reduce global memory pressure.
+- **Constant Memory Utilization:** Leverages GPU Constant Cache for filter weights to trigger warp broadcasting and reduce global memory pressure.
 
 ## Image Elaboration 
 
@@ -70,12 +70,12 @@ The core of the project is a massive scaling stress test, pushing image dimensio
 ## Project Structure
 * `main.cu`: Source code containing the parallel implementation of both layouts and the benchmark.
 * `benchmark.cpp`: Source code containing the sequential implementation of both layouts and the benchmark.
-* `experiments_results/`: Output directory (must be created before execution) where all the `performance_*.csv` file will be saved.
-* `images`: Directory that contains the image template, the scaled input of this template and all the output with different filters applied.
-* `reports`: Directory that contains some reports from the profiler.
-* `analysis_plot`: Directory that contains all the plots generated from the `analysis_experiments.py` script.
-* `documentation`: Directory that contains report of the project and presentation.
 * `CMakeLists.txt`: it contains directive for the compiler.
+* `experiments_results/`: Output directory (must be created before execution) where all the `performance_*.csv` file will be saved.
+* `images/`: Directory that contains the image template, the scaled input of this template and all the output with different filters applied.
+* `reports/`: Directory that contains some reports from the profiler.
+* `analysis_plot/`: Directory that contains all the plots generated from the `analysis_experiments.py` script.
+* `documentation/`: Directory that contains report of the project and presentation.
 ---
 
 ## Compilation and Execution
