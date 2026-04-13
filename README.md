@@ -38,6 +38,7 @@ The main goal is to measure sequential execution times on the CPU as the image d
 ## Key Features
 
 * **Dynamic Gaussian Filter:** Procedural generation of a normalized Gaussian kernel.
+* **Flexible Filter Selection:** Choosing between different filters.
 * **Spatial Stress Test:** The input image is progressively resized with multiplicative factors up to 100x.
 * **Safe Memory Management:** Use of 64-bit addressing (`size_t`) to prevent index overflow when processing multi-gigabyte images.
 * **Data Export:** Execution time results are saved in a CSV file, ready for plotting and statistical analysis.
@@ -50,6 +51,7 @@ The main goal is to measure sequential execution times on the CPU as the image d
 * **OpenCV:** Library for basic image reading, manipulation, and resizing.
 * **RAM:** At least 32 GB of memory is recommended to run the tests with `factor = 100` without triggering the OS OOM (Out Of Memory) Killer.
 *  Otherwise you have to modifies the hardcoded array of resize factor.
+*  Using WSL2 to execute the project or a Linux SO.
 
 ---
 
