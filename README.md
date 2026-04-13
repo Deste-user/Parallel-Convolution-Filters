@@ -1,8 +1,20 @@
 # Image Convolution: Performance Analysis
 
-This C++ project implements and analyzes the performance of a convolution filter (Gaussian blur) applied to an image, comparing two different memory layouts: **AoS (Array of Structures)** and **SoA (Structure of Arrays)**.
+This project explores the impact of memory hierarchy and data layout on computational performance. By implementing a Gaussian Blur convolution, the software performs a comparative analysis between AoS (Array of Structures) and SoA (Structure of Arrays) memory models.
 
-The main goal is to measure sequential execution times on the CPU as the image dimensions scale up, pushing the hardware to its memory and cache limits.
+The core of the project is a massive scaling stress test, pushing image dimensions up to 100x their original size to observe hardware bottlenecks, cache efficiency, and TLB (Translation Lookaside Buffer) behavior.
+
+## Project Objectives
+- **Memory Layout Comparison:** Evaluate the trade-offs between AoS and SoA in terms of data locality and memory bandwidth utilization.
+
+- **Hardware Stress Testing:** Push system RAM and GPU VRAM to their limits (allocating multiple GBs per buffer) to trigger and analyze performance degradation.
+
+- **Performance Telemetry:** Collect and export high-resolution execution metrics to analyze the scalability of different architectural approaches.
+
+## Implementation Highlights
+- **Single-Pass RGB Kernel:** Optimized execution that processes all color channels in a single launch, minimizing kernel launch overhead and maximizing register reuse.
+
+-**Constant Memory Utilization:** Leverages GPU Constant Cache for filter weights to trigger warp broadcasting and reduce global memory pressure.
 
 ## Image Elaboration 
 
